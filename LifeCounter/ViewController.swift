@@ -1,10 +1,3 @@
-//
-//  ViewController.swift
-//  LifeCounter
-//
-//  Created by Evan Chang on 4/21/25.
-//
-
 import UIKit
 
 class Player {
@@ -13,6 +6,7 @@ class Player {
     var lifeLabel: UILabel
     var nameLabel: UILabel
     var buttonStack: UIStackView
+    var inputField: UITextField
     
     init(name: String) {
         self.name = name
@@ -20,16 +14,26 @@ class Player {
         
         self.nameLabel = UILabel()
         self.nameLabel.text = name
+        self.nameLabel.font = .systemFont(ofSize: 16, weight: .medium)
         self.nameLabel.translatesAutoresizingMaskIntoConstraints = false
         
         self.lifeLabel = UILabel()
         self.lifeLabel.text = "20"
+        self.lifeLabel.font = .systemFont(ofSize: 36, weight: .bold)
         self.lifeLabel.translatesAutoresizingMaskIntoConstraints = false
         
         self.buttonStack = UIStackView()
-        self.buttonStack.distribution = .fillEqually
-        self.buttonStack.spacing = 10
+        self.buttonStack.distribution = .fill
+        self.buttonStack.spacing = 8
         self.buttonStack.translatesAutoresizingMaskIntoConstraints = false
+        
+        self.inputField = UITextField()
+        self.inputField.text = "5"
+        self.inputField.keyboardType = .numberPad
+        self.inputField.textAlignment = .center
+        self.inputField.borderStyle = .roundedRect
+        self.inputField.font = .systemFont(ofSize: 14)
+        self.inputField.translatesAutoresizingMaskIntoConstraints = false
     }
     
     func adjustLife(by lives: Int) {
@@ -47,14 +51,39 @@ class Player {
     }
 }
 
+struct HistoryEntry {
+    let playerName: String
+    let lifeChange: Int
+    let timestamp: Date
+    
+    var description: String {
+        let sign = lifeChange > 0 ? "+" : "-"
+        return "\(playerName) \(sign) \(abs(lifeChange))"
+    }
+}
+
 class Game {
     var players: [Player]
+    private var isGameStarted: Bool = false
+    var history: [HistoryEntry] = []
     
-    init(playerCount: Int = 2) {
+    init(playerCount: Int = 4) {
         players = []
         for i in 1...playerCount {
             players.append(Player(name: "Player \(i)"))
         }
+    }
+    
+    func addHistoryEntry(playerName: String, lifeChange: Int) {
+        let entry = HistoryEntry(playerName: playerName, lifeChange: lifeChange, timestamp: Date())
+        history.append(entry)
+    }
+    
+    func addPlayer() -> Bool {
+        guard players.count < 8 && !isGameStarted else { return false }
+        let playerNumber = players.count + 1
+        players.append(Player(name: "Player \(playerNumber)"))
+        return true
     }
     
     func checkGameStatus() -> String {
@@ -65,6 +94,18 @@ class Game {
         }
         return ""
     }
+    
+    func hasGameStarted() -> Bool {
+        return players.contains { $0.lifeTotal != 20 }
+    }
+    
+    func updateGameStarted() {
+        isGameStarted = hasGameStarted()
+    }
+    
+    func canAddPlayer() -> Bool {
+        return players.count < 8 && !isGameStarted
+    }
 }
 
 class ViewController: UIViewController {
@@ -72,6 +113,26 @@ class ViewController: UIViewController {
     typealias ButtonAction = (Int, Int) -> Void
     
     private var game: Game!
+    
+    private lazy var addPlayerButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle("Add Player", for: .normal)
+        button.backgroundColor = .systemGreen
+        button.setTitleColor(.white, for: .normal)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.addTarget(self, action: #selector(addPlayerTapped), for: .touchUpInside)
+        return button
+    }()
+    
+    private lazy var historyButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle("History", for: .normal)
+        button.backgroundColor = .systemBlue
+        button.setTitleColor(.white, for: .normal)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.addTarget(self, action: #selector(historyButtonTapped), for: .touchUpInside)
+        return button
+    }()
     
     private lazy var gameStatusLabel: UILabel = {
         let label = UILabel()
@@ -94,11 +155,70 @@ class ViewController: UIViewController {
         super.viewDidLoad()
         view.backgroundColor = .white
         
-        game = Game(playerCount: 2)
+        game = Game(playerCount: 4)
         
+        setupAddPlayerButton()
+        setupHistoryButton()
         setupMainStackView()
         setupPlayersUI()
         setupGameStatusLabel()
+        adjustStackSpacing()
+ 
+        view.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(dismissKeyboard)))
+    }
+    
+    @objc private func historyButtonTapped() {
+        let historyVC = HistoryViewController()
+        historyVC.historyEntries = game.history
+        let navController = UINavigationController(rootViewController: historyVC)
+        present(navController, animated: true)
+    }
+    
+    @objc private func addPlayerTapped() {
+        guard game.canAddPlayer() else { return }
+        
+        if game.addPlayer() {
+            mainStackView.arrangedSubviews.forEach { $0.removeFromSuperview() }
+            setupPlayersUI()
+            updateAddPlayerButton()
+            adjustStackSpacing()
+        }
+    }
+    
+    private func adjustStackSpacing() {
+        let spacing: CGFloat = game.players.count > 6 ? 5 : game.players.count > 4 ? 10 : 20
+        mainStackView.spacing = spacing
+    }
+    
+    private func updateAddPlayerButton() {
+        addPlayerButton.isEnabled = game.canAddPlayer()
+        addPlayerButton.backgroundColor = game.canAddPlayer() ? .systemGreen : .systemGray
+    }
+    
+    private func setupAddPlayerButton() {
+        view.addSubview(addPlayerButton)
+        
+        NSLayoutConstraint.activate([
+            addPlayerButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 10),
+            addPlayerButton.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 20),
+            addPlayerButton.widthAnchor.constraint(equalToConstant: 120),
+            addPlayerButton.heightAnchor.constraint(equalToConstant: 40)
+        ])
+    }
+    
+    private func setupHistoryButton() {
+        view.addSubview(historyButton)
+        
+        NSLayoutConstraint.activate([
+            historyButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 10),
+            historyButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -20),
+            historyButton.widthAnchor.constraint(equalToConstant: 120),
+            historyButton.heightAnchor.constraint(equalToConstant: 40)
+        ])
+    }
+    
+    @objc private func dismissKeyboard() {
+        view.endEditing(true)
     }
     
     override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
@@ -123,7 +243,7 @@ class ViewController: UIViewController {
         NSLayoutConstraint.activate([
             mainStackView.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 20),
             mainStackView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -20),
-            mainStackView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 20),
+            mainStackView.topAnchor.constraint(equalTo: addPlayerButton.bottomAnchor, constant: 20),
             mainStackView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -80)
         ])
     }
@@ -132,6 +252,8 @@ class ViewController: UIViewController {
         for (index, player) in game.players.enumerated() {
             let playerContainer = createPlayerContainer()
             mainStackView.addArrangedSubview(playerContainer)
+
+            player.buttonStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
             
             playerContainer.addSubview(player.nameLabel)
             playerContainer.addSubview(player.lifeLabel)
@@ -139,31 +261,64 @@ class ViewController: UIViewController {
             
             let adjustLifeAction: (Int, Int) -> Void = { [weak self] playerIndex, amount in
                 guard let self = self else { return }
-                self.game.players[playerIndex].adjustLife(by: amount)
+                let player = self.game.players[playerIndex]
+                
+                if amount != 0 {
+                    self.game.addHistoryEntry(playerName: player.name, lifeChange: amount)
+                }
+                
+                player.adjustLife(by: amount)
+                self.game.updateGameStarted()
+                self.updateAddPlayerButton()
                 self.updateGameStatus()
             }
             
-            let minus5Button = createButton(title: "-5") { adjustLifeAction(index, -5) }
             let minus1Button = createButton(title: "-1") { adjustLifeAction(index, -1) }
             let plus1Button = createButton(title: "+1") { adjustLifeAction(index, 1) }
-            let plus5Button = createButton(title: "+5") { adjustLifeAction(index, 5) }
             
-            player.buttonStack.addArrangedSubview(minus5Button)
+            let minusCustomButton = createButton(title: "-") { [weak self] in
+                guard let self = self else { return }
+                if let customAmount = Int(self.game.players[index].inputField.text ?? "0") {
+                    adjustLifeAction(index, -customAmount)
+                }
+            }
+            
+            let plusCustomButton = createButton(title: "+") { [weak self] in
+                guard let self = self else { return }
+                if let customAmount = Int(self.game.players[index].inputField.text ?? "0") {
+                    adjustLifeAction(index, customAmount)
+                }
+            }
+            
             player.buttonStack.addArrangedSubview(minus1Button)
             player.buttonStack.addArrangedSubview(plus1Button)
-            player.buttonStack.addArrangedSubview(plus5Button)
+            player.buttonStack.addArrangedSubview(minusCustomButton)
+            player.buttonStack.addArrangedSubview(player.inputField)
+            player.buttonStack.addArrangedSubview(plusCustomButton)
+ 
+            minus1Button.widthAnchor.constraint(equalToConstant: 36).isActive = true
+            plus1Button.widthAnchor.constraint(equalToConstant: 36).isActive = true
+            minusCustomButton.widthAnchor.constraint(equalToConstant: 36).isActive = true
+            plusCustomButton.widthAnchor.constraint(equalToConstant: 36).isActive = true
+            player.inputField.widthAnchor.constraint(equalToConstant: 50).isActive = true
+
+            
+            player.lifeLabel.font = .systemFont(ofSize: 10, weight: .bold)
+            player.nameLabel.font = .systemFont(ofSize: 10, weight: .medium)
+
+            let topPadding: CGFloat = game.players.count > 6 ? 5 : 10
+            let bottomPadding: CGFloat = game.players.count > 6 ? 5 : 10
             
             NSLayoutConstraint.activate([
-                player.nameLabel.topAnchor.constraint(equalTo: playerContainer.topAnchor, constant: 20),
+                player.nameLabel.topAnchor.constraint(equalTo: playerContainer.topAnchor, constant: topPadding),
                 player.nameLabel.centerXAnchor.constraint(equalTo: playerContainer.centerXAnchor),
                 
                 player.lifeLabel.centerXAnchor.constraint(equalTo: playerContainer.centerXAnchor),
-                player.lifeLabel.centerYAnchor.constraint(equalTo: playerContainer.centerYAnchor),
+                player.lifeLabel.centerYAnchor.constraint(equalTo: playerContainer.centerYAnchor, constant: -10),
                 
-                player.buttonStack.leadingAnchor.constraint(equalTo: playerContainer.leadingAnchor, constant: 20),
-                player.buttonStack.trailingAnchor.constraint(equalTo: playerContainer.trailingAnchor, constant: -20),
-                player.buttonStack.bottomAnchor.constraint(equalTo: playerContainer.bottomAnchor, constant: -20),
-                player.buttonStack.heightAnchor.constraint(equalToConstant: 50)
+                player.buttonStack.centerXAnchor.constraint(equalTo: playerContainer.centerXAnchor),
+                player.buttonStack.bottomAnchor.constraint(equalTo: playerContainer.bottomAnchor, constant: -bottomPadding),
+                player.buttonStack.heightAnchor.constraint(equalToConstant: 36)
             ])
         }
     }
@@ -198,5 +353,58 @@ class ViewController: UIViewController {
     
     private func updateGameStatus() {
         gameStatusLabel.text = game.checkGameStatus()
+    }
+}
+
+class HistoryViewController: UIViewController, UITableViewDataSource, UITableViewDelegate {
+    
+    var historyEntries: [HistoryEntry] = []
+    
+    private lazy var tableView: UITableView = {
+        let table = UITableView()
+        table.translatesAutoresizingMaskIntoConstraints = false
+        table.dataSource = self
+        table.delegate = self
+        table.register(UITableViewCell.self, forCellReuseIdentifier: "HistoryCell")
+        return table
+    }()
+    
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        
+        title = "History"
+        view.backgroundColor = .white
+        
+        navigationItem.rightBarButtonItem = UIBarButtonItem(barButtonSystemItem: .done, target: self, action: #selector(dismissHistory))
+        
+        setupTableView()
+    }
+    
+    private func setupTableView() {
+        view.addSubview(tableView)
+        
+        NSLayoutConstraint.activate([
+            tableView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        ])
+    }
+    
+    @objc private func dismissHistory() {
+        dismiss(animated: true)
+    }
+
+    
+    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
+        return historyEntries.count
+    }
+    
+    func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+        let cell = tableView.dequeueReusableCell(withIdentifier: "HistoryCell", for: indexPath)
+        let entry = historyEntries[indexPath.row]
+        cell.textLabel?.text = entry.description
+        cell.textLabel?.numberOfLines = 0
+        return cell
     }
 }
